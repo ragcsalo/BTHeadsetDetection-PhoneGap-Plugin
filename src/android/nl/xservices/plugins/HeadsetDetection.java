@@ -1,21 +1,22 @@
 package nl.xservices.plugins;
 
-import org.apache.cordova.CallbackContext;
-import org.apache.cordova.CordovaPlugin;
-import org.apache.cordova.PluginResult;
-import org.apache.cordova.CordovaInterface;
-import org.apache.cordova.CordovaWebView;
-
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothAssignedNumbers;
+import android.bluetooth.BluetoothHeadset;
+import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.media.AudioManager;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioManager;
 import android.util.Log;
-import android.content.BroadcastReceiver;
 
+import org.apache.cordova.CallbackContext;
+import org.apache.cordova.CordovaInterface;
+import org.apache.cordova.CordovaPlugin;
+import org.apache.cordova.CordovaWebView;
+import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
 public class HeadsetDetection extends CordovaPlugin {
 
@@ -34,26 +35,36 @@ public class HeadsetDetection extends CordovaPlugin {
   @Override
   public void initialize(CordovaInterface cordova, CordovaWebView webView) {
       super.initialize(cordova, webView);
+      Log.d(LOG_TAG, "Headset plugin initialized");
       mCachedWebView = webView;
       IntentFilter intentFilter = new IntentFilter();
-      intentFilter.addAction(Intent.ACTION_HEADSET_PLUG);
+      intentFilter.addCategory(BluetoothHeadset.VENDOR_SPECIFIC_HEADSET_EVENT_COMPANY_ID_CATEGORY + "." + BluetoothAssignedNumbers.PLANTRONICS);
+      intentFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
+      Log.d(LOG_TAG, "Receiver started");
+
       this.receiver = new BroadcastReceiver() {
           @Override
           public void onReceive(Context context, Intent intent) {
-              if (intent.getAction().equals(Intent.ACTION_HEADSET_PLUG)) {
-                  int state = intent.getIntExtra("state", -1);
-                  switch (state) {
-                  case 0:
-                      Log.d(LOG_TAG, "Headset is unplugged");
-                      mCachedWebView.sendJavascript("cordova.require('cordova-plugin-headsetdetection.HeadsetDetection').remoteHeadsetRemoved();");
-                      break;
-                  case 1:
-                      Log.d(LOG_TAG, "Headset is plugged");
+              Log.d(LOG_TAG, "onReceive: "+intent.getAction());
+              if (intent.getAction().equals(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED)) {
+                  Log.d(LOG_TAG, "BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED");
+
+                  int state = intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE,
+                          BluetoothAdapter.STATE_DISCONNECTED);
+
+                  Log.d(LOG_TAG, "state = "+state);
+
+                  if (state == 2) {
+                      Log.d(LOG_TAG, "Headset CONNECTED");
                       mCachedWebView.sendJavascript("cordova.require('cordova-plugin-headsetdetection.HeadsetDetection').remoteHeadsetAdded();");
-                      break;
-                  default:
-                      Log.d(LOG_TAG, "I have no idea what the headset state is");
+                  } else if (state==1) {
+                      Log.d(LOG_TAG, "Headset is connecting...");
+                  } else {
+                      Log.d(LOG_TAG, "Headset disconnected");
+                      mCachedWebView.sendJavascript("cordova.require('cordova-plugin-headsetdetection.HeadsetDetection').remoteHeadsetRemoved();");
                   }
+
+
               }
           }
       };
@@ -77,6 +88,7 @@ public class HeadsetDetection extends CordovaPlugin {
   }
 
   private boolean isHeadsetEnabled() {
+    Log.d(LOG_TAG, "isHeadsetEnabled()");
     final AudioManager audioManager = (AudioManager) cordova.getActivity().getSystemService(Context.AUDIO_SERVICE);
     return audioManager.isWiredHeadsetOn() ||
         audioManager.isBluetoothA2dpOn() ||
